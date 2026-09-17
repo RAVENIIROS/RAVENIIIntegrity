@@ -1,4 +1,4 @@
-# Integrity Detection and Characterization of Malicious Injections in RAVEN II
+# Detection Limits of Malicious Injection in a Cable-Driven Surgical Robot
 
 Code and reproduction steps for the accompanying paper.
 
@@ -9,10 +9,11 @@ script behind those numbers.
 
 ## Headline results
 
-Detection floors under a threshold-free criterion, in millimetres of tip deviation:
+Detection floors under a threshold-free criterion, in millimetres of tip
+deviation:
 
 | Injection pattern | Observation stream | Command stream |
-|--- |--- |--- |
+|---|---|---|
 | step  | 0.142 | 0.290 |
 | ramp  | 1.300 | not detected |
 | noise | 0.031 | not detected |
@@ -24,7 +25,9 @@ Which feature sees which injection point, in millimetres:
 | torque-to-motion residual | no | likely no | 0.81 |
 | servo tracking error | 2.85 | **0.53** | 1.35 |
 
-Neither feature covers all three points; together they do. 
+Neither feature covers all three points; together they do. Under a fixed
+alarm budget, none of the three patterns retains an operating point, for a
+reason that belongs to the data rather than the method (Section 5).
 
 `MANIFEST.md` maps every number in the paper to the script that produced it.
 
@@ -115,74 +118,40 @@ skipped.
 
 ---
 
-## 3. Order of reproduction
+## 3. Scripts
 
-Order matters within a group, not between groups.
+| Script | Produces |
+|---|---|
+| `peng_uw_loader.py` | column mapping, range checks |
+| `diag_leakage.py` | the three negative controls |
+| `probe_drift.py` | six-hour drift, tip displacement |
+| `probe_slow_path.py` | session-scale observable, four checks |
+| `probe_canary_transfer.py` | cross-load transfer of the calibration |
+| `exp_slow_attribution.py` | compensation-fidelity sweep, where attribution fails |
+| `exp_tracking_error.py` | lag, ARX identification, tracking-error floors |
+| `exp_residual_input.py` | torque-to-motion residual floor |
+| `exp_operating_point.py` | AUC floors and alarm-budget operating points |
+| `exp_tracking_operating.py` | the same two criteria on the tracking error |
+| `exp_command_path.py` | command-stream floors |
+| `exp_perjoint_graph.py` | per-joint encoder ablation (Limitations) |
+| `exp_window_accounting.py` | the counting errors of Section 5 |
+| `patch_operating_point.py` | the fix for them |
+| `train_and_export.py` | one exported model |
+| `selftest.py` | end-to-end check before hardware |
+| `bench_latency.py` | inference latency on the target host |
 
-### Preliminaries
+Two more carry shared machinery and are imported by most of the above:
+`exp_delta_ablation.py` (`Cfg`, window cache, feature construction) and
+`exp_paper_sweep.py` (the injector and floor estimation).
+`raven2_peng_pipeline_v3.py` supplies the model and loss.
 
-```bash
-python3 src/peng_uw_loader.py        # verify the column mapping
-python3 src/diag_leakage.py          # three negative controls, all near 0.50
-```
+Run the first two before anything else. If `diag_leakage.py` returns above
+0.5 on any of its three controls (null injection, channel sanitisation, label
+shuffling), the injection pipeline is leaking labels and nothing downstream
+is meaningful. Each control removes the real signal but keeps the labels, so
+a detector that still scores above chance is using something it should not.
 
-The controls are null injection (the injected tensor is bitwise identical to
-the clean one while labels are still assigned), channel sanitisation, and
-label shuffling. Each removes the real signal but keeps the labels, so a
-detector that still scores above chance is using something it should not. If
-any of the three exceeds 0.5 meaningfully, stop.
-
-### Does the window-scale path need a second timescale?
-
-```bash
-python3 src/probe_drift.py             # six-hour drift, tip displacement
-python3 src/probe_slow_path.py         # session-scale observable, four checks
-python3 src/probe_canary_transfer.py   # cross-load transfer of the calibration
-python3 src/exp_slow_attribution.py    # compensation-fidelity sweep
-```
-
-### Does any single feature cover the injection taxonomy?
-
-```bash
-python3 src/exp_tracking_error.py      # lag estimation, ARX identification, floors
-python3 src/exp_residual_input.py      # physics residual as input
-```
-
-### Floors under a fixed alarm budget
-
-```bash
-python3 src/exp_operating_point.py
-python3 src/exp_tracking_operating.py
-```
-
-Read Section 5 before interpreting the output of these two.
-
-### The command stream
-
-```bash
-python3 src/exp_command_path.py
-```
-
-### Supporting experiments
-
-```bash
-python3 src/exp_perjoint_graph.py      # per-joint encoder ablation
-python3 src/exp_physics_loss.py        # physics-loss ablation
-python3 src/exp_cross_attack_v2.py     # cross-family generalisation matrix
-python3 src/exp_predictive.py          # lead time from the prediction residual
-```
-
-### Deployment artifacts
-
-```bash
-python3 src/train_and_export.py        # train and export one model
-python3 src/selftest.py                # end-to-end check before hardware
-python3 src/bench_latency.py           # inference latency, on the target host
-```
-
-`DEPLOY.md` covers what to change before connecting to a robot.
-
----
+Read Section 5 before interpreting `exp_operating_point.py`.
 
 ## 4. Two pitfalls that change conclusions
 
@@ -210,8 +179,47 @@ no signal remains.
 `train_and_export.py` stores both alongside the weights and records this in
 the checkpoint's `note` field.
 
+---
 
-## 5. Known reproduction differences
+## 5. A correction made before submission
+
+An earlier version of the analysis reported that step injection reaches
+0.95 mm at two alarms per procedure hour. A check found two counting errors,
+both in the same direction, both making the result look better than it is.
+
+**Decision frequency counted non-overlapping windows.** The window is 30
+frames at stride one, so a deployed monitor scoring every frame makes 30
+times as many decisions as the non-overlapping count of 15,850 per hour. The
+original comment in the script called the non-overlapping count
+conservative; that judgement is backwards. If deployment is worse, reporting
+the smaller number is optimistic.
+
+**Validation windows are not independent.** Adjacent windows share 29 of 30
+frames, so the 8,731 held-out windows thin to roughly 290 once made mutually
+non-overlapping. Estimating a tail quantile needs independent samples, and
+8,731 overlapping ones do not supply 8,731 of them.
+
+| | Before | After |
+|---|---|---|
+| decision frequency | 15,850 per hour | 30x more if every frame is scored |
+| clean samples | 8,731 | about 290 |
+| strictest estimable budget | 1.8 per hour | about 38 per hour |
+
+Together these mean the 0.95 mm claim cannot be estimated from this data.
+After the correction, none of the three injection patterns retains an
+operating point at any budget the held-out data supports.
+
+That negative result is what the paper reports, because it belongs to the
+data rather than to the method: longer clean recordings would restore the
+estimate, a better detector would not.
+
+Quantified in `exp_window_accounting.py`; the fix is applied by
+`patch_operating_point.py`, which preserves the original as
+`exp_operating_point.py.orig`.
+
+---
+
+## 6. Known reproduction differences
 
 **GPU non-determinism.** The cuDNN LSTM backward pass is not bitwise
 deterministic, so a re-run with the same seed moves AUC by about 0.004. The
@@ -231,7 +239,7 @@ bootstrap rather than assume a sampling distribution.
 
 ---
 
-## 6. What was not done
+## 7. What was not done
 
 - All injections are synthetic. Injection C perturbs the recorded reported
   positions directly and is faithful, since the arm does not move. Injection
@@ -241,4 +249,10 @@ bootstrap rather than assume a sampling distribution.
 - The session-scale audit is validated on joint 1 only and needs an external
   encoder reference, so it is a calibration-time check rather than an online
   monitor.
+- Nothing has been run on a robot in motion.
 
+---
+
+## Licence
+
+See `LICENSE`.
