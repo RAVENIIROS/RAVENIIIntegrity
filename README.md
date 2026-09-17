@@ -1,4 +1,4 @@
-# Detection Limits of Malicious Injection in a Cable-Driven Surgical Robot
+# Integrity Detection and Characterization of Malicious Injections in RAVEN II
 
 Code and reproduction steps for the accompanying paper.
 
@@ -25,9 +25,7 @@ Which feature sees which injection point, in millimetres:
 | torque-to-motion residual | no | likely no | 0.81 |
 | servo tracking error | 2.85 | **0.53** | 1.35 |
 
-Neither feature covers all three points; together they do. Under a fixed
-alarm budget, none of the three patterns retains an operating point, for a
-reason that belongs to the data rather than the method (Section 5).
+Neither feature covers all three points; together they do. 
 
 `MANIFEST.md` maps every number in the paper to the script that produced it.
 
@@ -179,47 +177,8 @@ no signal remains.
 `train_and_export.py` stores both alongside the weights and records this in
 the checkpoint's `note` field.
 
----
 
-## 5. A correction made before submission
-
-An earlier version of the analysis reported that step injection reaches
-0.95 mm at two alarms per procedure hour. A check found two counting errors,
-both in the same direction, both making the result look better than it is.
-
-**Decision frequency counted non-overlapping windows.** The window is 30
-frames at stride one, so a deployed monitor scoring every frame makes 30
-times as many decisions as the non-overlapping count of 15,850 per hour. The
-original comment in the script called the non-overlapping count
-conservative; that judgement is backwards. If deployment is worse, reporting
-the smaller number is optimistic.
-
-**Validation windows are not independent.** Adjacent windows share 29 of 30
-frames, so the 8,731 held-out windows thin to roughly 290 once made mutually
-non-overlapping. Estimating a tail quantile needs independent samples, and
-8,731 overlapping ones do not supply 8,731 of them.
-
-| | Before | After |
-|---|---|---|
-| decision frequency | 15,850 per hour | 30x more if every frame is scored |
-| clean samples | 8,731 | about 290 |
-| strictest estimable budget | 1.8 per hour | about 38 per hour |
-
-Together these mean the 0.95 mm claim cannot be estimated from this data.
-After the correction, none of the three injection patterns retains an
-operating point at any budget the held-out data supports.
-
-That negative result is what the paper reports, because it belongs to the
-data rather than to the method: longer clean recordings would restore the
-estimate, a better detector would not.
-
-Quantified in `exp_window_accounting.py`; the fix is applied by
-`patch_operating_point.py`, which preserves the original as
-`exp_operating_point.py.orig`.
-
----
-
-## 6. Known reproduction differences
+## 5. Known reproduction differences
 
 **GPU non-determinism.** The cuDNN LSTM backward pass is not bitwise
 deterministic, so a re-run with the same seed moves AUC by about 0.004. The
@@ -239,7 +198,7 @@ bootstrap rather than assume a sampling distribution.
 
 ---
 
-## 7. What was not done
+## 6. What was not done
 
 - All injections are synthetic. Injection C perturbs the recorded reported
   positions directly and is faithful, since the arm does not move. Injection
@@ -251,8 +210,4 @@ bootstrap rather than assume a sampling distribution.
   monitor.
 - Nothing has been run on a robot in motion.
 
----
 
-## Licence
-
-See `LICENSE`.
