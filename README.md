@@ -242,8 +242,3 @@ bootstrap rather than assume a sampling distribution.
   encoder reference, so it is a calibration-time check rather than an online
   monitor.
 
----
-
-## Licence
-
-See `LICENSE`.
