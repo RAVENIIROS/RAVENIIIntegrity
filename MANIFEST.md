@@ -130,34 +130,6 @@ These are cited from the literature, not measured here.
 
 ---
 
-## A correction made before submission: the alarm budget
 
-An earlier version reported that step injection reaches 0.95 mm at two alarms
-per procedure hour. The check found two counting errors:
 
-| | Before | After |
-|---|---|---|
-| decision frequency | 15,850 per hour (non-overlapping) | deployment scores every frame, 30x more |
-| clean samples | 8,731 (adjacent windows share 29 of 30 frames) | about 290 (thinned to non-overlapping) |
-| strictest estimable budget | 1.8 per hour | about 38 per hour |
 
-After the correction none of the three patterns has an operating point at any
-estimable budget. `exp_window_accounting.py` quantifies this and
-`patch_operating_point.py` applies the fix.
-
-What the paper keeps is the AUC-based floors (step 0.142 mm, ramp 1.300 mm,
-noise 0.031 mm) and the negative result under a fixed budget.
-
----
-
-## One comparison deliberately not made
-
-An earlier version claimed agreement with Peng et al. to within 7 %. Their
-six-hour joint-1 drift under 500 g is reported as 0.296 / 0.741 / 0.772 /
-0.824 degrees, one value per calibration method, and those are residuals
-after compensation. Our 0.800 degrees is the **uncompensated** divergence
-between the reported position and the encoder.
-
-The two measure different quantities, so the percentage was removed from the
-paper and replaced by a statement that they are of the same order. Do not try
-to reproduce a closer match.
